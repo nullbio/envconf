@@ -10,6 +10,10 @@ import (
 )
 
 var testToml = `
+[prod]
+configstring   = "badstring"
+[test]
+configstring   = "badstring"
 [dev]
 configstring   = "string"
 configint      = -5
