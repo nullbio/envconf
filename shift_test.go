@@ -94,7 +94,7 @@ func TestLoad(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("didn't load keys properly:\n%#v\n%#v", got, want)
+		t.Errorf("didn't load keys properly:\nwant: %#v\ngot: %#v", want, got)
 	}
 }
 

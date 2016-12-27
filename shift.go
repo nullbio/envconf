@@ -2,7 +2,6 @@ package shift
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"os"
 	"reflect"
@@ -81,71 +80,141 @@ func bind(typ reflect.Type, val reflect.Value, config map[string]interface{}) er
 
 		envVal := os.Getenv(strings.ToUpper(key))
 		if len(envVal) != 0 {
-			fmt.Println("FOUND", key, envVal)
-			fieldVal := val.Field(i)
-
-			switch f.Type.Kind() {
-			case reflect.String:
-				fieldVal.SetString(envVal)
-			case reflect.Int:
-				i, err := strconv.ParseInt(envVal, 10, sizeOfInt*8)
-				if err != nil {
-					return err
-				}
-				fieldVal.SetInt(i)
-			case reflect.Int64:
-				if f.Type == typeDuration {
-					dur, err := time.ParseDuration(envVal)
-					if err != nil {
-						return err
-					}
-					fieldVal.SetInt(int64(dur))
-				} else {
-					i, err := strconv.ParseInt(envVal, 10, 64)
-					if err != nil {
-						return err
-					}
-					fieldVal.SetInt(i)
-				}
-			case reflect.Uint:
-				u, err := strconv.ParseUint(envVal, 10, sizeOfInt*8)
-				if err != nil {
-					return err
-				}
-				fieldVal.SetUint(u)
-			case reflect.Uint64:
-				u, err := strconv.ParseUint(envVal, 10, 64)
-				if err != nil {
-					return err
-				}
-				fieldVal.SetUint(u)
-			case reflect.Float64:
-				f, err := strconv.ParseFloat(envVal, 64)
-				if err != nil {
-					return err
-				}
-				fieldVal.SetFloat(f)
-			case reflect.Struct:
-				if f.Type != typeTime {
-					return errors.Errorf("failed to bind field %s, unsupported struct type: %s", key, f.Type.String())
-				}
-				date, err := time.Parse(time.RFC3339, envVal)
-				if err != nil {
-					return err
-				}
-				fieldVal.Set(reflect.ValueOf(date))
-			default:
-				return errors.Errorf("failed to bind field %s, unsupported struct type: %s", key, f.Type.String())
+			if err := assignFromEnv(envVal, f.Type, val.Field(i)); err != nil {
+				return errors.Wrapf(err, "failed to assign key %s", key)
 			}
+			continue
 		}
 
 		if intf, ok := config[key]; ok {
-			fmt.Println("FOUND", key, intf)
+			if err := assignFromIntf(intf, f.Type, val.Field(i)); err != nil {
+				return errors.Wrapf(err, "failed to assign key %s", key)
+			}
 			continue
 		}
 	}
 
 	return nil
+}
+
+func assignFromEnv(envVal string, fieldType reflect.Type, fieldVal reflect.Value) error {
+	switch fieldType.Kind() {
+	case reflect.String:
+		fieldVal.SetString(envVal)
+	case reflect.Int:
+		i, err := strconv.ParseInt(envVal, 10, sizeOfInt*8)
+		if err != nil {
+			return err
+		}
+		fieldVal.SetInt(i)
+	case reflect.Int64:
+		if fieldType == typeDuration {
+			dur, err := time.ParseDuration(envVal)
+			if err != nil {
+				return err
+			}
+			fieldVal.SetInt(int64(dur))
+		} else {
+			i, err := strconv.ParseInt(envVal, 10, 64)
+			if err != nil {
+				return err
+			}
+			fieldVal.SetInt(i)
+		}
+	case reflect.Uint:
+		u, err := strconv.ParseUint(envVal, 10, sizeOfInt*8)
+		if err != nil {
+			return err
+		}
+		fieldVal.SetUint(u)
+	case reflect.Uint64:
+		u, err := strconv.ParseUint(envVal, 10, 64)
+		if err != nil {
+			return err
+		}
+		fieldVal.SetUint(u)
+	case reflect.Float64:
+		f, err := strconv.ParseFloat(envVal, 64)
+		if err != nil {
+			return err
+		}
+		fieldVal.SetFloat(f)
+	case reflect.Struct:
+		if fieldType != typeTime {
+			return errors.Errorf("unsupported struct type: %s", fieldType.String())
+		}
+		date, err := time.Parse(time.RFC3339, envVal)
+		if err != nil {
+			return err
+		}
+		fieldVal.Set(reflect.ValueOf(date))
+	default:
+		return errors.Errorf("unsupported struct type: %s", fieldType.String())
+	}
+
+	return nil
+}
+
+func assignFromIntf(val interface{}, fieldType reflect.Type, fieldVal reflect.Value) error {
+	switch fieldType.Kind() {
+	case reflect.String:
+		if s, ok := val.(string); ok {
+			fieldVal.SetString(s)
+			return nil
+		}
+	case reflect.Int:
+		if i, ok := val.(int64); ok {
+			if _, err := int64ToInt(i); err != nil {
+				return err
+			}
+			fieldVal.SetInt(i)
+			return nil
+		}
+	case reflect.Int64:
+		if fieldType == typeDuration {
+			if s, ok := val.(string); ok {
+				d, err := time.ParseDuration(s)
+				if err != nil {
+					return err
+				}
+				fieldVal.Set(reflect.ValueOf(d))
+				return nil
+			}
+		} else {
+			if i, ok := val.(int64); ok {
+				if _, err := int64ToInt(i); err != nil {
+					return err
+				}
+				fieldVal.SetInt(i)
+				return nil
+			}
+		}
+	case reflect.Uint:
+		if i, ok := val.(int64); ok {
+			if _, err := uint64ToUint(uint64(i)); err != nil {
+				return err
+			}
+			fieldVal.SetUint(uint64(i))
+			return nil
+		}
+	case reflect.Uint64:
+		if i, ok := val.(int64); ok {
+			fieldVal.SetUint(uint64(i))
+			return nil
+		}
+	case reflect.Float64:
+		if f, ok := val.(float64); ok {
+			fieldVal.SetFloat(f)
+			return nil
+		}
+	case reflect.Struct:
+		if fieldType == typeTime {
+			fieldVal.Set(reflect.ValueOf(val))
+			return nil
+		}
+	}
+
+	return errors.Errorf("unsupported conversion %s -> %s", fieldType.String(), reflect.TypeOf(val).String())
 }
 
 func getKeyName(f reflect.StructField) string {
