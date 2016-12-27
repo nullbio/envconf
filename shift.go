@@ -2,9 +2,12 @@ package shift
 
 import (
 	"bytes"
+	"fmt"
 	"math"
+	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 	"unicode"
 
@@ -14,6 +17,11 @@ import (
 
 var (
 	testHarnessDecodeFile = toml.DecodeFile
+
+	typeTime     = reflect.TypeOf(time.Now())
+	typeDuration = reflect.TypeOf(time.Duration(0))
+
+	sizeOfInt = int(reflect.TypeOf(int(0)).Size())
 )
 
 // Load finds key names from the struct tags in c and tries to load them
@@ -33,8 +41,6 @@ var (
 // 1. ENV
 // 2. File values (top-level keys must be the "env" param to this function)
 func Load(c interface{}, file, env string) error {
-	var i interface{}
-
 	typ := reflect.TypeOf(c)
 	if typ.Kind() != reflect.Ptr {
 		return errors.Errorf("'c' must be a pointer to a struct, was: %v", typ.String())
@@ -43,52 +49,116 @@ func Load(c interface{}, file, env string) error {
 	if typ.Kind() != reflect.Struct {
 		return errors.Errorf("'c' must be a pointer to a struct, was: %v", typ.String())
 	}
+	val := reflect.Indirect(reflect.ValueOf(c))
 
-	keys := getKeys(typ)
-	_ = keys
-
+	var i interface{}
 	_, err := testHarnessDecodeFile(file, &i)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return err
+	}
+
+	var m map[string]interface{}
+	if i != nil {
+		topLevel := i.(map[string]interface{})
+		if topLevel != nil {
+			envLevel := topLevel[env]
+			m = envLevel.(map[string]interface{})
+		}
+	}
+
+	return bind(typ, val, m)
+}
+
+func bind(typ reflect.Type, val reflect.Value, config map[string]interface{}) error {
+	n := typ.NumField()
+	for i := 0; i < n; i++ {
+		f := typ.Field(i)
+		key := getKeyName(f)
+
+		if len(key) == 0 {
+			continue
+		}
+
+		envVal := os.Getenv(strings.ToUpper(key))
+		if len(envVal) != 0 {
+			fmt.Println("FOUND", key, envVal)
+			fieldVal := val.Field(i)
+
+			switch f.Type.Kind() {
+			case reflect.String:
+				fieldVal.SetString(envVal)
+			case reflect.Int:
+				i, err := strconv.ParseInt(envVal, 10, sizeOfInt*8)
+				if err != nil {
+					return err
+				}
+				fieldVal.SetInt(i)
+			case reflect.Int64:
+				if f.Type == typeDuration {
+					dur, err := time.ParseDuration(envVal)
+					if err != nil {
+						return err
+					}
+					fieldVal.SetInt(int64(dur))
+				} else {
+					i, err := strconv.ParseInt(envVal, 10, 64)
+					if err != nil {
+						return err
+					}
+					fieldVal.SetInt(i)
+				}
+			case reflect.Uint:
+				u, err := strconv.ParseUint(envVal, 10, sizeOfInt*8)
+				if err != nil {
+					return err
+				}
+				fieldVal.SetUint(u)
+			case reflect.Uint64:
+				u, err := strconv.ParseUint(envVal, 10, 64)
+				if err != nil {
+					return err
+				}
+				fieldVal.SetUint(u)
+			case reflect.Float64:
+				f, err := strconv.ParseFloat(envVal, 64)
+				if err != nil {
+					return err
+				}
+				fieldVal.SetFloat(f)
+			case reflect.Struct:
+				if f.Type != typeTime {
+					return errors.Errorf("failed to bind field %s, unsupported struct type: %s", key, f.Type.String())
+				}
+				date, err := time.Parse(time.RFC3339, envVal)
+				if err != nil {
+					return err
+				}
+				fieldVal.Set(reflect.ValueOf(date))
+			default:
+				return errors.Errorf("failed to bind field %s, unsupported struct type: %s", key, f.Type.String())
+			}
+		}
+
+		if intf, ok := config[key]; ok {
+			fmt.Println("FOUND", key, intf)
+			continue
+		}
 	}
 
 	return nil
 }
 
-func getKeys(t reflect.Type) []string {
-	var keys []string
-
-	n := t.NumField()
-	for i := 0; i < n; i++ {
-		f := t.Field(i)
-
-		if tag := f.Tag.Get("shift"); tag == "-" {
-			continue
-		} else if len(tag) != 0 {
-			keys = append(keys, tag)
-		} else {
-			keys = append(keys, (f.Name))
-		}
+func getKeyName(f reflect.StructField) string {
+	tag := f.Tag.Get("shift")
+	switch {
+	case tag == "-":
+		return ""
+	case len(tag) != 0:
+		return tag
+	default:
+		return toCamel(f.Name)
 	}
-
-	return keys
 }
-
-func strToInt(s string) (int, error) {
-	return strconv.Atoi(s)
-}
-
-func strToTime(s string) (time.Time, error) {
-	return time.Parse(time.RFC3339, s)
-}
-
-func strToDuration(s string) (time.Duration, error) {
-	return time.ParseDuration(s)
-}
-
-var (
-	sizeOfInt = reflect.TypeOf(int(0)).Size()
-)
 
 // int64ToInt converts but also checks bounds to ensure it can fit
 func int64ToInt(i int64) (int, error) {
