@@ -92,13 +92,40 @@ func TestLoad(t *testing.T) {
 		Configduration: 15 * time.Second,
 	}
 
-	err := Load(&got, "file", "dev")
+	err := Load(&got, "file", "", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("didn't load keys properly:\nwant: %#v\ngot: %#v", want, got)
+	}
+}
+
+func TestLoadEnvPrefix(t *testing.T) {
+	restore := testHarnessDecodeFile
+	os.Setenv("PREFIX_ENVSTRING", "string")
+	defer func() {
+		testHarnessDecodeFile = restore
+		os.Setenv("PREFIX_ENVSTRING", "")
+	}()
+
+	testHarnessDecodeFile = func(_ string, i interface{}) (toml.MetaData, error) {
+		return toml.Decode(testToml, i)
+	}
+
+	got := testStruct{}
+	want := testStruct{
+		Envstring: "string",
+	}
+
+	err := Load(&got, "file", "prefix", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Envstring != want.Envstring {
+		t.Error("Envstring was wrong:", got.Envstring)
 	}
 }
 
@@ -230,7 +257,7 @@ func TestLoadTwo(t *testing.T) {
 		TestVAR: true, // Ensure this is still true & Load didn't overwrite to zero val
 	}
 
-	err := Load(&got, "file", "dev")
+	err := Load(&got, "file", "", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}

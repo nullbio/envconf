@@ -1,7 +1,12 @@
+// Package shift enables loading of configuration via environment and files
+// but makes a distinction between environments in the file portion. As a Go
+// package it also does the convenient thing of putting this configuration
+// into a struct whose names are configurable via struct tags.
 package shift
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"os"
 	"reflect"
@@ -39,7 +44,7 @@ var (
 // Earlier sources are overidden by later sources in this list:
 // 1. ENV
 // 2. File values (top-level keys must be the "env" param to this function)
-func Load(c interface{}, file, env string) error {
+func Load(c interface{}, file, envPrefix, env string) error {
 	typ := reflect.TypeOf(c)
 	if typ.Kind() != reflect.Ptr {
 		return errors.Errorf("'c' must be a pointer to a struct, was: %v", typ.String())
@@ -65,10 +70,10 @@ func Load(c interface{}, file, env string) error {
 		}
 	}
 
-	return bind(typ, val, m)
+	return bind(envPrefix, typ, val, m)
 }
 
-func bind(typ reflect.Type, val reflect.Value, config map[string]interface{}) error {
+func bind(envPrefix string, typ reflect.Type, val reflect.Value, config map[string]interface{}) error {
 	n := typ.NumField()
 	for i := 0; i < n; i++ {
 		f := typ.Field(i)
@@ -78,7 +83,11 @@ func bind(typ reflect.Type, val reflect.Value, config map[string]interface{}) er
 			continue
 		}
 
-		envVal := os.Getenv(strings.ToUpper(key))
+		envKey := key
+		if len(envPrefix) != 0 {
+			envKey = fmt.Sprintf("%s_%s", envPrefix, envKey)
+		}
+		envVal := os.Getenv(strings.ToUpper(envKey))
 		if len(envVal) != 0 {
 			if err := assignFromEnv(envVal, f.Type, val.Field(i)); err != nil {
 				return errors.Wrapf(err, "failed to assign key %s", key)
