@@ -276,14 +276,14 @@ func toCamel(s string) string {
 	var r = []rune(s)
 
 	ln := len(r)
-	last, next := false, false
+	var last bool
 	for i := 0; i < ln; i++ {
 		upper := unicode.IsUpper(r[i])
 
 		if i != 0 && upper {
-			next = i+1 < ln && unicode.IsUpper(r[i+1])
-
-			if (!last || !next && i+1 < ln) || (!last && i+1 >= ln) {
+			if !last {
+				b.WriteByte('_')
+			} else if i+1 < ln && !unicode.IsUpper(r[i+1]) {
 				b.WriteByte('_')
 			}
 		}
