@@ -101,6 +101,15 @@ func assignFromEnv(envVal string, fieldType reflect.Type, fieldVal reflect.Value
 	switch fieldType.Kind() {
 	case reflect.String:
 		fieldVal.SetString(envVal)
+	case reflect.Bool:
+		if envVal != "true" && envVal != "false" {
+			return errors.Errorf("invalid value for bool, must be %q or %q: %s", "true", "false", envVal)
+		}
+		if envVal == "true" {
+			fieldVal.SetBool(true)
+		} else {
+			fieldVal.SetBool(false)
+		}
 	case reflect.Int:
 		i, err := strconv.ParseInt(envVal, 10, sizeOfInt*8)
 		if err != nil {
@@ -160,6 +169,11 @@ func assignFromIntf(val interface{}, fieldType reflect.Type, fieldVal reflect.Va
 	case reflect.String:
 		if s, ok := val.(string); ok {
 			fieldVal.SetString(s)
+			return nil
+		}
+	case reflect.Bool:
+		if b, ok := val.(bool); ok {
+			fieldVal.SetBool(b)
 			return nil
 		}
 	case reflect.Int:
@@ -269,7 +283,7 @@ func toCamel(s string) string {
 		if i != 0 && upper {
 			next = i+1 < ln && unicode.IsUpper(r[i+1])
 
-			if !last || !next {
+			if (!last || !next && i+1 < ln) || (!last && i+1 >= ln) {
 				b.WriteByte('_')
 			}
 		}

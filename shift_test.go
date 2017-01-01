@@ -165,11 +165,77 @@ func TestToCamel(t *testing.T) {
 		{"OneTwo", "one_two"},
 		{"OneTWOThree", "one_two_three"},
 		{"ONETWOThree", "onetwo_three"},
+		{"TestONE", "test_one"},
+		{"TestOneTWO", "test_one_two"},
+		{"TestO", "test_o"},
+		{"TestON", "test_on"},
+		{"TestOn", "test_on"},
+		{"TEST", "test"},
 	}
 
 	for i, test := range tests {
 		if got := toCamel(test.In); got != test.Out {
 			t.Errorf("%d) [%s] %s != %s", i, test.In, got, test.Out)
 		}
+	}
+}
+
+var testTomlTwo = `
+[dev]
+	bind = ":3999"
+	log_json = true
+	assets_no_hash = true
+[prod]
+`
+
+type testStructTwo struct {
+	// env vars
+	TLSBind          string `toml:"tls_bind"`
+	AssetsNoCompress bool   `toml:"assets_no_compress"`
+	LogJSONTwo       bool   `toml:"log_json_two"`
+	// config vars
+	Bind         string `toml:"bind"`
+	LogJSON      bool   `toml:"log_json"`
+	AssetsNoHash bool   `toml:"assets_no_hash"`
+	// ignore vars
+	TestVAR bool `toml:"test_var"`
+}
+
+func TestLoadTwo(t *testing.T) {
+	restore := testHarnessDecodeFile
+	os.Setenv("TLS_BIND", ":4000")
+	os.Setenv("ASSETS_NO_COMPRESS", "true")
+	os.Setenv("LOG_JSON_TWO", "true")
+	defer func() {
+		testHarnessDecodeFile = restore
+		os.Setenv("TLS_BIND", "")
+		os.Setenv("ASSETS_NO_COMPRESS", "")
+		os.Setenv("LOG_JSON_TWO", "")
+	}()
+
+	testHarnessDecodeFile = func(_ string, i interface{}) (toml.MetaData, error) {
+		return toml.Decode(testTomlTwo, i)
+	}
+
+	got := testStructTwo{TestVAR: true}
+	want := testStructTwo{
+		TLSBind:          ":4000",
+		AssetsNoCompress: true,
+		LogJSONTwo:       true,
+
+		Bind:         ":3999",
+		LogJSON:      true,
+		AssetsNoHash: true,
+
+		TestVAR: true, // Ensure this is still true & Load didn't overwrite to zero val
+	}
+
+	err := Load(&got, "file", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("didn't load keys properly:\nwant: %#v\ngot: %#v", want, got)
 	}
 }
