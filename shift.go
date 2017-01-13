@@ -32,9 +32,23 @@ var (
 // Load finds key names from the struct tags in c and tries to load them
 // from various sources.
 //
-// The values that are loaded from the file must be divided in sections for each
-// "environment" - that's to say everything must be under top level keys that
-// name the environments.
+// Load calls LoadWithDecoded and passes in the result of the file decode
+func Load(c interface{}, file, envPrefix, env string) error {
+	var i interface{}
+	_, err := testHarnessDecodeFile(file, &i)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return LoadWithDecoded(c, i, envPrefix, env)
+}
+
+// LoadWithDecoded finds key names from the struct tags in c and tries to load them
+// from various sources.
+//
+// The values that are contained within the decoded interface{} must be divided
+// in sections for each "environment" - that's to say everything must be under
+// top level keys that name the environments.
 //
 // Only a few value types are supported:
 // - bool
@@ -45,8 +59,8 @@ var (
 //
 // Earlier sources are overidden by later sources in this list:
 // 1. ENV
-// 2. File values (top-level keys must be the "env" param to this function)
-func Load(c interface{}, file, envPrefix, env string) error {
+// 2. Decoded interface{} values (top-level keys must be the "env" param to this function)
+func LoadWithDecoded(c interface{}, decoded interface{}, envPrefix, env string) error {
 	typ := reflect.TypeOf(c)
 	if typ.Kind() != reflect.Ptr {
 		return errors.Errorf("'c' must be a pointer to a struct, was: %v", typ.String())
@@ -57,15 +71,9 @@ func Load(c interface{}, file, envPrefix, env string) error {
 	}
 	val := reflect.Indirect(reflect.ValueOf(c))
 
-	var i interface{}
-	_, err := testHarnessDecodeFile(file, &i)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-
 	var m map[string]interface{}
-	if i != nil {
-		topLevel := i.(map[string]interface{})
+	if decoded != nil {
+		topLevel := decoded.(map[string]interface{})
 		if topLevel != nil {
 			envLevel := topLevel[env]
 			m = envLevel.(map[string]interface{})
