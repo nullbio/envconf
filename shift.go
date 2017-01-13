@@ -22,8 +22,9 @@ import (
 var (
 	testHarnessDecodeFile = toml.DecodeFile
 
-	typeTime     = reflect.TypeOf(time.Now())
-	typeDuration = reflect.TypeOf(time.Duration(0))
+	typeTime      = reflect.TypeOf(time.Now())
+	typeDuration  = reflect.TypeOf(time.Duration(0))
+	typeStringArr = reflect.TypeOf([]string{})
 
 	sizeOfInt = int(reflect.TypeOf(int(0)).Size())
 )
@@ -36,7 +37,8 @@ var (
 // name the environments.
 //
 // Only a few value types are supported:
-// - string
+// - bool
+// - string / []string
 // - int / int64 / uint / uint64
 // - time.Time (RFC3339)
 // - time.Duration
@@ -234,6 +236,18 @@ func assignFromIntf(val interface{}, fieldType reflect.Type, fieldVal reflect.Va
 		if fieldType == typeTime {
 			fieldVal.Set(reflect.ValueOf(val))
 			return nil
+		}
+	case reflect.Slice:
+		if fieldType == typeStringArr {
+			if s, ok := val.([]interface{}); ok {
+				sArr := make([]string, len(s))
+				for i := range s {
+					str, _ := s[i].(string)
+					sArr[i] = str
+				}
+				fieldVal.Set(reflect.ValueOf(sArr))
+				return nil
+			}
 		}
 	}
 

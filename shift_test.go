@@ -16,6 +16,7 @@ configstring   = "badstring"
 configstring   = "badstring"
 [dev]
 configstring   = "string"
+configstringarr = ["string1", "string2"]
 configint      = -5
 configint64    = -10
 configuint     = 5
@@ -35,14 +36,15 @@ type testStruct struct {
 	Envtime     time.Time
 	Envduration time.Duration
 
-	Configstring   string
-	Configint      int
-	Configint64    int64
-	Configuint     uint
-	Configuint64   uint64
-	Configfloat64  float64
-	Configtime     time.Time
-	Configduration time.Duration
+	Configstring    string
+	Configstringarr []string
+	Configint       int
+	Configint64     int64
+	Configuint      uint
+	Configuint64    uint64
+	Configfloat64   float64
+	Configtime      time.Time
+	Configduration  time.Duration
 }
 
 func TestLoad(t *testing.T) {
@@ -82,14 +84,15 @@ func TestLoad(t *testing.T) {
 		Envtime:     time.Date(2006, 1, 2, 15, 4, 5, 0, time.UTC),
 		Envduration: 15 * time.Second,
 
-		Configstring:   "string",
-		Configint:      -5,
-		Configint64:    -10,
-		Configuint:     5,
-		Configuint64:   10,
-		Configfloat64:  10.5,
-		Configtime:     time.Date(2006, 1, 2, 15, 4, 5, 0, time.UTC),
-		Configduration: 15 * time.Second,
+		Configstring:    "string",
+		Configstringarr: []string{"string1", "string2"},
+		Configint:       -5,
+		Configint64:     -10,
+		Configuint:      5,
+		Configuint64:    10,
+		Configfloat64:   10.5,
+		Configtime:      time.Date(2006, 1, 2, 15, 4, 5, 0, time.UTC),
+		Configduration:  15 * time.Second,
 	}
 
 	err := Load(&got, "file", "", "dev")
@@ -137,6 +140,7 @@ func TestGetKeyName(t *testing.T) {
 		IDMonster int
 		String    string `shift:"a"`
 		Uint      uint   `shift:"-"`
+		StringArr []string
 	}{}
 
 	typ := reflect.TypeOf(s)
@@ -152,6 +156,9 @@ func TestGetKeyName(t *testing.T) {
 	}
 	if getKeyName(typ.Field(3)) != "" {
 		t.Error("uint should be empty string")
+	}
+	if getKeyName(typ.Field(4)) != "string_arr" {
+		t.Error("string_arr wasn't found")
 	}
 }
 
